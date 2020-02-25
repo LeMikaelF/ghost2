@@ -4,8 +4,11 @@ import com.github.coleb1911.ghost2.commands.meta.CommandContext;
 import com.github.coleb1911.ghost2.commands.meta.Module;
 import com.github.coleb1911.ghost2.commands.meta.ModuleInfo;
 import com.github.coleb1911.ghost2.commands.meta.ReflectiveAccess;
+import discord4j.core.object.entity.Message;
+import discord4j.core.object.entity.MessageChannel;
 import discord4j.core.object.util.Permission;
 import discord4j.core.object.util.PermissionSet;
+import reactor.core.publisher.Flux;
 
 import javax.validation.constraints.NotNull;
 
@@ -20,10 +23,11 @@ public final class ModulePurge extends Module {
     }
 
     @Override
+    @ReflectiveAccess
     public void invoke(@NotNull final CommandContext ctx) {
         // Check for arguments
         if (ctx.getArgs().isEmpty()) {
-            ctx.reply("Please specify a number of messages to purge.");
+            ctx.replyBlocking("Please specify a number of messages to purge.");
             return;
         }
 
@@ -32,16 +36,17 @@ public final class ModulePurge extends Module {
         try {
             count = Integer.parseInt(ctx.getArgs().get(0));
         } catch (NumberFormatException e) {
-            ctx.reply(Module.REPLY_ARGUMENT_INVALID);
+            ctx.replyBlocking(Module.REPLY_ARGUMENT_INVALID);
             return;
         }
 
         // Remove messages
-        ctx.getChannel().getMessagesBefore(ctx.getMessage().getId())
+        MessageChannel channel = ctx.getChannel();
+        Flux.just(ctx.getMessage().getId())
+                .flatMap(channel::getMessagesBefore)
                 .take(count)
-                .map(message -> message.delete().subscribe())
-                .retry(5L)
-                .blockLast();
+                .flatMap(Message::delete)
+                .subscribe();
         ctx.getMessage().delete().subscribe();
     }
 }

@@ -27,7 +27,7 @@ public class InvalidModuleException extends RuntimeException {
      * @param module  The Module that caused the exception
      * @param reasons Set of Reasons for the exception
      */
-    public InvalidModuleException(Class<? extends Module> module, Set<Reason> reasons) {
+    InvalidModuleException(Class<? extends Module> module, Set<Reason> reasons) {
         super(formatErrorMessage(module.getName(), Reason.concat(reasons)));
         this.module = module;
         this.reasons = reasons;
@@ -90,7 +90,7 @@ public class InvalidModuleException extends RuntimeException {
         INVALID_BOT_PERMISSIONS("Module has a null bot permission list"),
         INVALID_USER_PERMISSIONS("Module has a null user permission list"),
         INVALID_TYPE("Module has a null type"),
-        INVALID_ALIASES("Module has a null alias array");
+        INVALID_ALIASES("Module has a null alias list");
 
         private final String message;
 

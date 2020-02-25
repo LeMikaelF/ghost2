@@ -3,6 +3,7 @@ package com.github.coleb1911.ghost2.commands.modules.moderation;
 import com.github.coleb1911.ghost2.commands.meta.CommandContext;
 import com.github.coleb1911.ghost2.commands.meta.Module;
 import com.github.coleb1911.ghost2.commands.meta.ModuleInfo;
+import com.github.coleb1911.ghost2.commands.meta.ReflectiveAccess;
 import discord4j.core.object.util.Permission;
 import discord4j.core.object.util.PermissionSet;
 import reactor.core.publisher.Mono;
@@ -10,20 +11,19 @@ import reactor.core.publisher.Mono;
 import javax.validation.constraints.NotNull;
 
 public final class ModuleMute extends Module {
+    @ReflectiveAccess
     public ModuleMute() {
         super(new ModuleInfo.Builder(ModuleMute.class)
                 .withName("mute")
-                .withDescription("Mute a desired user.")
+                .withDescription("Mute a user")
                 .withBotPermissions(PermissionSet.of(Permission.MUTE_MEMBERS)));
     }
 
     @Override
+    @ReflectiveAccess
     public void invoke(@NotNull CommandContext ctx) {
-        //Check for args
-        try {
-            ctx.getArgs().get(0);
-        } catch (IndexOutOfBoundsException e) {
-            ctx.reply("Please specify a user.");
+        if(ctx.getArgs().isEmpty()) {
+            ctx.replyBlocking("Please specify a user.");
             return;
         }
 
@@ -32,11 +32,11 @@ public final class ModuleMute extends Module {
                 .filter(member -> targetName.equals(member.getDisplayName()))
                 .map(member -> member.edit(spec -> {
                     spec.setMute(true);
-                    ctx.reply(member.getDisplayName() + " is now muted.");
+                    ctx.replyBlocking(member.getDisplayName() + " is now muted.");
                 }).subscribe())
                 .hasElements()
                 .flatMap(aBoolean -> {
-                    if (!aBoolean) ctx.reply("User not found.");
+                    if (!aBoolean) ctx.replyBlocking("User not found.");
                     return Mono.just(aBoolean);
                 })
                 .subscribe();

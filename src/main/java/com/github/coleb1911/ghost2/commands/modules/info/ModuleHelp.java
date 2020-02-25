@@ -7,6 +7,7 @@ import com.github.coleb1911.ghost2.commands.meta.Module;
 import com.github.coleb1911.ghost2.commands.meta.ModuleInfo;
 import com.github.coleb1911.ghost2.commands.meta.ReflectiveAccess;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Configurable;
 
 import javax.validation.constraints.NotNull;
 import java.util.ArrayList;
@@ -21,18 +22,20 @@ import java.util.stream.Collectors;
  * @author cbryant02
  * @author LeMikaelF
  */
+@Configurable
 public final class ModuleHelp extends Module {
-
     @Autowired private CommandRegistry registry;
 
     @ReflectiveAccess
     public ModuleHelp() {
         super(new ModuleInfo.Builder(ModuleHelp.class)
                 .withName("help")
-                .withDescription("List commands or get help with a specific command"));
+                .withDescription("List commands or get help with a specific command")
+                .showTypingIndicator());
     }
 
     @Override
+    @ReflectiveAccess
     public void invoke(@NotNull final CommandContext ctx) {
         if (ctx.getArgs().size() > 0) {
             singleCommandHelp(ctx);
@@ -50,7 +53,7 @@ public final class ModuleHelp extends Module {
         // Fetch & null-check CommandInfo
         ModuleInfo info = registry.getInfo(ctx.getArgs().get(0));
         if (null == info) {
-            ctx.reply(Module.REPLY_COMMAND_INVALID);
+            ctx.replyBlocking(Module.REPLY_COMMAND_INVALID);
             return;
         }
 

@@ -16,15 +16,16 @@ public final class ModuleKick extends Module {
     public ModuleKick() {
         super(new ModuleInfo.Builder(ModuleKick.class)
                 .withName("kick")
-                .withDescription("Kick a desired user")
+                .withDescription("Kick a user")
                 .withPermissions(PermissionSet.of(Permission.KICK_MEMBERS)));
     }
 
     @Override
+    @ReflectiveAccess
     public void invoke(@NotNull final CommandContext ctx) {
         // Check for args
         if (ctx.getArgs().isEmpty()) {
-            ctx.reply("Please specify a user.");
+            ctx.replyBlocking("Please specify a user.");
             return;
         }
 
@@ -34,7 +35,7 @@ public final class ModuleKick extends Module {
             target.asMember(ctx.getGuild().getId())
                     .doOnError(e -> {
                         if (e instanceof ClientException && ((ClientException) e).getStatus().code() == 50013)
-                            ctx.reply("I don't have permission to kick that user.");
+                            ctx.replyBlocking("I don't have permission to kick that user.");
                     })
                     .subscribe(m -> m.kick().subscribe());
         } else {
@@ -42,7 +43,7 @@ public final class ModuleKick extends Module {
             ctx.getGuild().getMembers()
                     .doOnError(e -> {
                         if (e instanceof ClientException && ((ClientException) e).getStatus().code() == 50013)
-                            ctx.reply("I don't have permission to kick that user.");
+                            ctx.replyBlocking("I don't have permission to kick that user.");
                     })
                     .take(1)
                     .filter(member -> targetName.equals(member.getDisplayName()))
@@ -50,7 +51,7 @@ public final class ModuleKick extends Module {
                     .collectList()
                     .subscribe(monos -> {
                         if (monos.isEmpty())
-                            ctx.reply("No user found with that name.");
+                            ctx.replyBlocking("No user found with that name.");
                     });
         }
     }

@@ -11,9 +11,11 @@ import discord4j.core.object.util.Permission;
 import discord4j.core.object.util.PermissionSet;
 import discord4j.core.object.util.Snowflake;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Configurable;
 
 import javax.validation.constraints.NotNull;
 
+@Configurable
 public final class ModuleConfirm extends Module {
     @Autowired GuildMetaRepository guildRepo;
 
@@ -26,6 +28,7 @@ public final class ModuleConfirm extends Module {
     }
 
     @Override
+    @ReflectiveAccess
     public void invoke(@NotNull final CommandContext ctx) {
         ctx.getSelf().getBasePermissions().subscribe(permissions -> {
             if (permissions.contains(Permission.MANAGE_MESSAGES))
@@ -37,18 +40,18 @@ public final class ModuleConfirm extends Module {
             Role role = ctx.getGuild().getRoleById(Snowflake.of(meta.getAutoRoleId())).block();
             Role highest = ctx.getSelf().getHighestRole().block();
             if (null == role || null == highest || role.getRawPosition() > highest.getRawPosition()) {
-                ctx.reply("Autorole is configured to use an invalid role. Notify an admin.");
+                ctx.replyBlocking("Autorole is configured to use an invalid role. Notify an admin.");
                 return;
             }
 
             if (!ctx.getInvoker().getRoleIds().contains(role.getId())) {
                 ctx.getInvoker().addRole(role.getId(), "Autorole").subscribe();
-                ctx.replyDirect("You have received your role.");
+                ctx.replyDirectBlocking("You have received your role.");
             } else {
-                ctx.replyDirect("You already have " + ctx.getGuild().getName() + "'s base role.");
+                ctx.replyDirectBlocking("You already have the " + role.getName() + " role.");
             }
         } else {
-            ctx.replyDirect("Autorole confirmation is disabled. Your roles have not changed.");
+            ctx.replyDirectBlocking("Autorole confirmation is disabled. Your roles have not changed.");
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.github.coleb1911.ghost2.commands.meta;
 
+import discord4j.core.object.reaction.ReactionEmoji;
+
 import javax.validation.constraints.NotNull;
 
 /**
@@ -21,6 +23,10 @@ public abstract class Module {
     public static final String REPLY_ARGUMENT_INVALID = "Invalid argument. See `help` for a list of valid commands and their arguments.";
     public static final String REPLY_GENERAL_ERROR = "Whoops! An error occurred somewhere along the line. My operator has been notified.";
 
+    public static final ReactionEmoji REACT_OK = ReactionEmoji.unicode("\u2705");
+    public static final ReactionEmoji REACT_DENIED = ReactionEmoji.unicode("\u26D4");
+    public static final ReactionEmoji REACT_WARNING = ReactionEmoji.unicode("\u26A0");
+
     private final ModuleInfo info;
 
     /**
@@ -28,6 +34,7 @@ public abstract class Module {
      *
      * @param info ModuleInfo.Builder with the subclass' metadata
      */
+    @ReflectiveAccess
     protected Module(ModuleInfo.Builder info) {
         this.info = info.build();
     }
@@ -45,6 +52,7 @@ public abstract class Module {
      *
      * @param ctx Command context. <b>Cannot be null.</b>
      */
+    @ReflectiveAccess
     public abstract void invoke(@NotNull final CommandContext ctx);
 
     @Override

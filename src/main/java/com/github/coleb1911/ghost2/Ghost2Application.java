@@ -1,31 +1,30 @@
 package com.github.coleb1911.ghost2;
 
 import com.github.coleb1911.ghost2.commands.CommandDispatcher;
+import com.github.coleb1911.ghost2.commands.meta.ReflectiveAccess;
 import com.github.coleb1911.ghost2.database.entities.GuildMeta;
+import com.github.coleb1911.ghost2.database.repos.ApplicationMetaRepository;
 import com.github.coleb1911.ghost2.database.repos.GuildMetaRepository;
+import com.github.coleb1911.ghost2.music.MusicServiceManager;
 import discord4j.core.DiscordClient;
 import discord4j.core.DiscordClientBuilder;
 import discord4j.core.event.domain.guild.GuildCreateEvent;
 import discord4j.core.event.domain.guild.GuildDeleteEvent;
-import discord4j.core.event.domain.guild.MemberJoinEvent;
 import discord4j.core.event.domain.lifecycle.ReadyEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
+import discord4j.core.object.entity.Guild;
 import discord4j.core.object.presence.Activity;
 import discord4j.core.object.presence.Presence;
 import discord4j.core.object.util.Snowflake;
-import org.aeonbits.owner.ConfigFactory;
 import org.pmw.tinylog.Configurator;
 import org.pmw.tinylog.Level;
 import org.pmw.tinylog.Logger;
 import org.pmw.tinylog.writers.FileWriter;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.annotation.ComponentScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 import java.io.File;
@@ -42,35 +41,32 @@ import java.util.function.Predicate;
 /**
  * Application entry point
  */
-@ComponentScan
 @SpringBootApplication
-@EnableAutoConfiguration
 @EnableJpaRepositories("com.github.coleb1911.ghost2.database.repos")
 public class Ghost2Application implements ApplicationRunner {
-    private static final String MESSAGE_SET_OPERATOR = "No operator has been set for this bot instance. Use the \'claimoperator\' command to set one; until then, operator commands won't work.";
+    private static final String MESSAGE_SET_OPERATOR = "No operator has been set for this bot instance. Use the 'claimoperator' command to set one; until then, operator commands won't work.";
     private static final String ERROR_CONNECTION = "General connection error. Check your internet connection and try again.";
-    private static final String ERROR_CONFIG = "ghost.properties is missing or does not contain a bot token. Read ghost2's README for info on how to set up the bot.";
+    private static final String ERROR_CONFIG = "ghost.properties is missing or does not contain a bot token, and no fallback environment variable could be read.\n" +
+            "Read ghost2's README for info on how to set up the bot.";
 
-    private static Ghost2Application applicationInstance;
-
-    @Autowired private ApplicationContext ctx;
-    @Autowired private CommandDispatcher dispatcher;
-    @Autowired private GuildMetaRepository guildRepo;
+    private final ApplicationContext ctx;
+    private final CommandDispatcher dispatcher;
+    private final GuildMetaRepository guildRepo;
+    private final ApplicationMetaRepository amRepo;
     private DiscordClient client;
-    private GhostConfig config;
     private RandomAccessFile lockFile;
     private FileLock lock;
-    private long operatorId;
+
+    @ReflectiveAccess
+    public Ghost2Application(ApplicationContext ctx, CommandDispatcher dispatcher, GuildMetaRepository guildRepo, ApplicationMetaRepository amRepo) {
+        this.ctx = ctx;
+        this.dispatcher = dispatcher;
+        this.guildRepo = guildRepo;
+        this.amRepo = amRepo;
+    }
 
     public static void main(String[] args) {
         SpringApplication.run(Ghost2Application.class, args);
-    }
-
-    /**
-     * @return Main application class instance
-     */
-    public static Ghost2Application getApplicationInstance() {
-        return applicationInstance;
     }
 
     /**
@@ -81,6 +77,9 @@ public class Ghost2Application implements ApplicationRunner {
      */
     @Override
     public void run(ApplicationArguments args) {
+        // Set start time
+        References.setStartTime(System.currentTimeMillis());
+
         // Try to acquire a lock to ensure only one application instance is running
         if (!this.lock()) {
             Logger.error("Only one instance of ghost2 may run at a time. Close any other instances and try again.");
@@ -88,10 +87,10 @@ public class Ghost2Application implements ApplicationRunner {
         }
 
         // Set instance
-        applicationInstance = this;
+        References.setAppInstance(this);
 
         // Fetch config
-        config = ConfigFactory.create(GhostConfig.class);
+        GhostConfig config = References.getConfig();
         String token = config.token();
         if (null == token) {
             Logger.error(ERROR_CONFIG);
@@ -111,15 +110,15 @@ public class Ghost2Application implements ApplicationRunner {
         client = new DiscordClientBuilder(token)
                 .setInitialPresence(Presence.online(Activity.listening("your commands.")))
                 .build();
+        References.setClient(client);
 
         // Register event listeners
         this.registerListeners(client);
 
         // Get current bot operator, log notice if null
-        operatorId = config.operatorId();
-        if (operatorId == -1) {
-            Logger.info(MESSAGE_SET_OPERATOR);
-        }
+        long operatorId = amRepo.getOperatorId();
+        if (operatorId == -1) Logger.info(MESSAGE_SET_OPERATOR);
+        else Logger.info("Current operator is " + operatorId);
 
         // Log in and block main thread until bot logs out
         client.login()
@@ -138,6 +137,10 @@ public class Ghost2Application implements ApplicationRunner {
      * @param status Status code
      */
     public void exit(int status) {
+        // Shut down MusicServiceManager
+        MusicServiceManager.shutdown();
+        dispatcher.shutdown();
+
         // Log out bot
         client.logout().block();
 
@@ -147,41 +150,6 @@ public class Ghost2Application implements ApplicationRunner {
         // Close Spring application context
         SpringApplication.exit(ctx, () -> status);
         Logger.info("Exiting.");
-    }
-
-    /**
-     * Reloads the application config &amp; all related values.<br>
-     * Note: The application will exit if a token change occurred. Don't change it at runtime.
-     */
-    public void reloadConfig() {
-        config.reload();
-        if (!config.token().equals(client.getConfig().getToken())) {
-            Logger.info("Token changed on config reload. Exiting.");
-            exit(0);
-            return;
-        }
-        operatorId = config.operatorId();
-    }
-
-    /**
-     * @return The {@code CommandDispatcher} for this instance
-     */
-    public CommandDispatcher getDispatcher() {
-        return dispatcher;
-    }
-
-    /**
-     * @return The user ID of the bot's current operator
-     */
-    public long getOperatorId() {
-        return operatorId;
-    }
-
-    /**
-     * @return The currently loaded application config
-     */
-    public GhostConfig getConfig() {
-        return config;
     }
 
     /**
@@ -245,6 +213,15 @@ public class Ghost2Application implements ApplicationRunner {
                     idsToRemove.forEach(guildRepo::deleteById);
                 });
 
+        // Listen for new guilds
+        client.getEventDispatcher().on(GuildCreateEvent.class)
+                .map(GuildCreateEvent::getGuild)
+                .filter(Objects::nonNull)
+                .filter(guild -> guildRepo.existsById(guild.getId().asLong()))
+                .map(Guild::getId)
+                .map(GuildMeta::new)
+                .subscribe(guildRepo::save);
+
         // Drop guilds when we're removed from them
         client.getEventDispatcher().on(GuildDeleteEvent.class)
                 .filter(Predicate.not(GuildDeleteEvent::isUnavailable))
@@ -253,26 +230,12 @@ public class Ghost2Application implements ApplicationRunner {
                 .filter(guildRepo::existsById)
                 .subscribe(guildRepo::deleteById);
 
-        // Autorole
-        client.getEventDispatcher().on(MemberJoinEvent.class)
-                .subscribe(e -> {
-                    GuildMeta meta = guildRepo.findById(e.getGuildId().asLong()).orElse(null);
-                    if (meta == null) {
-                        Logger.error("MemberJoinEvent guild {} doesn't exist in database");
-                        return;
-                    }
-
-                    if (meta.getAutoRoleEnabled() && !meta.getAutoRoleConfirmationEnabled()) {
-                        e.getMember().addRole(Snowflake.of(meta.getAutoRoleId()), "Autorole").subscribe();
-                        String guildName = Objects.requireNonNull(e.getGuild().block()).getName();
-                        String dm = "Welcome to " + guildName + "! You've been given your role automatically.";
-                        e.getMember().getPrivateChannel().subscribe(c -> c.createMessage(dm).subscribe());
-                    }
-                });
-
         // Send MessageCreateEvents to CommandDispatcher
         client.getEventDispatcher().on(MessageCreateEvent.class)
                 .filter(e -> e.getMember().isPresent() && !e.getMember().get().isBot())
                 .subscribe(dispatcher::onMessageEvent);
+
+        // Register module event listeners
+        dispatcher.getRegistry().registerEventListeners(client);
     }
 }
